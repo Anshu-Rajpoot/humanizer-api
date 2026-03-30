@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="AI Humanizer API")
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,168 +19,112 @@ app.add_middleware(
 class HumanizeRequest(BaseModel):
     text: str
 
-
-# -------- TEXT PROCESSING --------
-
-def chunk_text(text: str, max_words: int = 150) -> List[str]:
+def chunk_text(text: str, max_words: int = 200) -> List[str]:
     words = text.split()
-    return [" ".join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
+    return [ " ".join(words[i:i+max_words]) for i in range(0, len(words), max_words) ]
 
-
-# ✅ Lightweight synonym map (FAST)
-SYN_MAP = {
-    "important": ["key", "crucial"],
-    "many": ["a lot of", "several"],
-    "help": ["assist", "support"],
-    "use": ["utilize", "apply"],
-    "shows": ["demonstrates", "reveals"],
-    "big": ["large", "major"]
+# Expanded for student-like natural writing
+STUDENT_SYNONYMS = {
+    'important': ['key', 'crucial', 'pretty important'],
+    'many': ['lots of', 'a bunch', 'several'],
+    'help': ['help out', 'assist'],
+    'use': ['use', 'try out'],
+    'shows': ['shows', 'makes clear'],
+    'however': ['but', 'though'],
+    'furthermore': ['also', 'plus'],
 }
 
-def replace_words(text: str):
-    words = text.split()
-    for i in range(len(words)):
-        w = words[i].lower()
-        if w in SYN_MAP and random.random() < 0.3:
-            words[i] = random.choice(SYN_MAP[w])
-    return " ".join(words)
+HUMAN_FILLERS = ['you know', 'like', 'basically', 'I mean']
+ROBOTIC_TO_CASUAL = {
+    'In conclusion': 'So yeah',
+    'Furthermore': 'Also',
+    'In addition': 'Plus',
+    'It is important to note': 'One thing is',
+}
 
-
-def structural_variation(text: str):
-    sentences = re.split(r'(?<=[.!?]) +', text)
-
-    # slight shuffle (not aggressive)
-    if len(sentences) > 4 and random.random() > 0.5:
-        random.shuffle(sentences)
-
-    new = []
+def process_chunk(chunk: str) -> str:
+    # 1. Vary sentence length - split long ones
+    sentences = re.split(r'(?<=[.!?]) +', chunk)
+    varied = []
     for s in sentences:
-        if len(s.split()) > 20 and random.random() > 0.6:
-            parts = s.split(",")
-            new.extend(parts)
+        words = s.split()
+        if len(words) > 20 and random.random() < 0.5:
+            # Split long sentence
+            mid = len(words) // 2 + random.randint(-2, 2)
+            varied.append(' '.join(words[:mid]) + '.')
+            varied.append(' '.join(words[mid:]))
         else:
-            new.append(s)
-
-    return " ".join(new)
-
-
-def human_tone(text: str):
-    replacements = {
-        "In conclusion": "Overall",
-        "Furthermore": "Also",
-        "However": "But",
-        "In addition": "Also",
-        "It is important to note that": "One thing to keep in mind is"
+            varied.append(s)
+    
+    text = ' '.join(varied)
+    
+    # 2. Synonym replacement & casual words
+    words = text.split()
+    for i, word in enumerate(words):
+        clean_word = re.sub(r'[^\w]', '', word.lower())
+        if clean_word in STUDENT_SYNONYMS and random.random() < 0.3:
+            words[i] = random.choice(STUDENT_SYNONYMS[clean_word])
+    text = ' '.join(words)
+    
+    # 3. Replace robotic transitions
+    for robotic, casual in ROBOTIC_TO_CASUAL.items():
+        if random.random() < 0.7:
+            text = text.replace(robotic, casual)
+    
+    # 4. Contractions & imperfections
+    contractions_map = {
+        " do not ": " don't ",
+        " does not ": " doesn't ",
+        " is not ": " isn't ",
+        " are not ": " aren't ",
+        " it is ": " it's ",
     }
-
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-
-    return text
-
-
-def contractions(text: str):
-    pairs = {
-        "do not": "don't",
-        "does not": "doesn't",
-        "is not": "isn't",
-        "are not": "aren't",
-        "cannot": "can't",
-        "it is": "it's"
-    }
-
-    for k, v in pairs.items():
-        if random.random() < 0.5:
-            text = text.replace(k, v)
-
-    return text
-
-
-def ai_score_heuristic(text: str):
+    for formal, casual in contractions_map.items():
+        text = text.replace(formal, casual)
+    
+    # Occasional filler for human feel
     sentences = re.split(r'(?<=[.!?]) +', text)
-    lengths = [len(s.split()) for s in sentences if s]
-
-    if not lengths:
-        return 1.0
-
-    avg = sum(lengths) / len(lengths)
-    variance = sum((l - avg) ** 2 for l in lengths) / len(lengths)
-
-    score = 0
-    if variance < 15:
-        score += 0.4
-    if avg > 18:
-        score += 0.3
-    if len(set(text.split())) / len(text.split()) < 0.5:
-        score += 0.3
-
-    return min(score, 1.0)
-
-
-import requests
-import os
-
-API_KEY = os.getenv("OPENAI_API_KEY")
-
-def rewrite_chunk(chunk: str):
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "gpt-4o-mini",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"""
-Rewrite this text to sound naturally human-written.
-
-- Keep meaning same
-- Make it less robotic
-- Vary sentence lengths
-- Add natural flow
-- Keep it concise (max 30% longer)
-
-Text:
-{chunk}
-"""
-                }
-            ],
-            "temperature": 0.8
-        }
-    )
-
-    return response.json()["choices"][0]["message"]["content"]
-
-
-# -------- API --------
+    for i, s in enumerate(sentences):
+        if random.random() < 0.2 and len(s.split()) > 8:
+            filler = random.choice(HUMAN_FILLERS)
+            s = s[:len(s)//2] + filler + s[len(s)//2:]
+            sentences[i] = s
+    text = ' '.join(sentences)
+    
+    # 5. Length control (max 30% increase)
+    orig_len = len(chunk.split())
+    words = text.split()
+    if len(words) > orig_len * 1.3:
+        text = ' '.join(words[:int(orig_len * 1.3)])
+    
+    return text
 
 @app.post("/humanize")
 def humanize(req: HumanizeRequest):
+    if not req.text.strip():
+        return {"original_length": 0, "humanized_length": 0, "output": ""}
+    
     chunks = chunk_text(req.text)
-
-    with ThreadPoolExecutor() as executor:
-        results = list(executor.map(process_chunk, chunks))
-
-    final_text = " ".join(results)
-
-    # length control (STRICT)
-    original_len = len(req.text.split())
-    max_len = int(original_len * 1.4)
-
-    words = final_text.split()
-    if len(words) > max_len:
-        final_text = " ".join(words[:max_len])
-
+    
+    with ThreadPoolExecutor(max_workers=min(8, len(chunks))) as executor:
+        humanized_chunks = list(executor.map(process_chunk, chunks))
+    
+    output = re.sub(r'\s+', ' ', ' '.join(humanized_chunks)).strip()
+    
+    orig_len = len(req.text.split())
+    out_len = len(output.split())
+    
     return {
-        "original_length": original_len,
-        "humanized_length": len(final_text.split()),
-        "output": final_text
+        "original_length": orig_len,
+        "humanized_length": out_len,
+        "output": output
     }
-
 
 @app.get("/")
 def root():
-    return {"status": "running"}
+    return {"status": "Humanizer API ready", "docs": "/docs"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+

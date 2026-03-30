@@ -1,64 +1,112 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>AI Humanizer Tester</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro AI Humanizer</title>
     <style>
         body {
-            font-family: Arial;
-            padding: 30px;
+            font-family: Arial, sans-serif;
             background: #f5f5f5;
+            padding: 30px;
+        }
+        h2 {
+            color: #333;
         }
         textarea {
             width: 100%;
-            height: 150px;
-            margin-bottom: 15px;
+            height: 180px;
             padding: 10px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            resize: vertical;
         }
         button {
             padding: 10px 20px;
+            margin-top: 10px;
+            font-size: 16px;
             cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            background-color: #4CAF50;
+            color: white;
+            transition: background-color 0.2s;
         }
-        .output {
+        button:hover {
+            background-color: #45a049;
+        }
+        .output-container {
             margin-top: 20px;
             background: white;
-            padding: 15px;
-            border-radius: 5px;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
+        }
+        #outputText {
+            white-space: pre-wrap;
+        }
+        .loader {
+            display: none;
+            margin-top: 10px;
+            font-style: italic;
+            color: #555;
         }
     </style>
 </head>
 <body>
 
-<h2>AI Humanizer Tester</h2>
+<h2>Pro AI Humanizer</h2>
+<p>Paste your AI-generated text below and get a humanized version suitable for academic essays or student-friendly content.</p>
 
 <textarea id="inputText" placeholder="Paste AI text here..."></textarea>
 <br>
-<button onclick="humanize()">Humanize</button>
+<button onclick="humanize()">Humanize Text</button>
+<p class="loader" id="loader">Processing... Please wait.</p>
 
-<div class="output">
-    <h3>Output:</h3>
-    <p id="outputText"></p>
+<div class="output-container">
+    <h3>Humanized Output:</h3>
+    <pre id="outputText"></pre>
+    <button onclick="copyOutput()">Copy Output</button>
 </div>
 
 <script>
 async function humanize() {
-    const text = document.getElementById("inputText").value;
+    const text = document.getElementById("inputText").value.trim();
+    if (!text) return alert("Please enter text to humanize.");
 
-    const response = await fetch("/humanize", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ text })
-    });
+    document.getElementById("loader").style.display = "block";
+    document.getElementById("outputText").innerText = "";
 
-    const data = await response.json();
-    document.getElementById("outputText").innerHTML = `
-        <strong>Original length:</strong> ${data.original_length}<br>
-        <strong>Humanized length:</strong> ${data.humanized_length} (${((data.humanized_length/data.original_length*100-100).toFixed(0)}% change)<br><br>
-        <strong>Humanized:</strong><br>${data.output.replace(/\n/g, '<br>')}
-    `;
+    try {
+        const response = await fetch("/humanize", {  // Ensure this points to your FastAPI endpoint
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ text })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        document.getElementById("outputText").innerText = data.output;
+    } catch (err) {
+        alert("Error: " + err.message);
+    } finally {
+        document.getElementById("loader").style.display = "none";
+    }
 }
 
+function copyOutput() {
+    const output = document.getElementById("outputText").innerText;
+    if (!output) return;
+    navigator.clipboard.writeText(output).then(() => {
+        alert("Humanized text copied to clipboard!");
+    });
+}
 </script>
 
 </body>
