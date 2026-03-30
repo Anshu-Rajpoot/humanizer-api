@@ -118,7 +118,7 @@ def process_chunk(chunk: str) -> str:
 
     for _ in range(3):
         text = structural_variation(chunk)
-        text = random_synonym_injection(text)
+        text = humanize_phrases(text)
         text = human_noise(text)
         text = inject_variability(text)
 
@@ -133,6 +133,39 @@ def process_chunk(chunk: str) -> str:
 
     return best
 
+
+def humanize_phrases(text: str) -> str:
+    phrase_map = {
+        "In conclusion": ["To sum it up", "Overall", "At the end of the day"],
+        "Furthermore": ["Also", "On top of that", "Besides"],
+        "However": ["But", "That said", "Still"],
+        "In addition": ["Plus", "Also", "Another thing is"],
+        "It is important to note that": ["One thing to keep in mind is", "It's worth noting"],
+        "This shows that": ["This basically shows", "This kind of means"],
+        "There are many": ["There are quite a few", "You’ll find a lot of"],
+        "In today's world": ["These days", "Right now"],
+    }
+
+    for phrase, variations in phrase_map.items():
+        if phrase in text and random.random() < 0.6:
+            text = text.replace(phrase, random.choice(variations))
+
+    # contractions (VERY IMPORTANT for human feel)
+    contractions = {
+        "do not": "don't",
+        "does not": "doesn't",
+        "is not": "isn't",
+        "are not": "aren't",
+        "cannot": "can't",
+        "it is": "it's",
+        "that is": "that's"
+    }
+
+    for k, v in contractions.items():
+        if k in text and random.random() < 0.5:
+            text = text.replace(k, v)
+
+    return text
 
 # -------- API --------
 
