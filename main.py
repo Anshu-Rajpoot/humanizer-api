@@ -37,7 +37,7 @@ def synonym_replace(word):
 def random_synonym_injection(text: str) -> str:
     words = text.split()
     for i in range(len(words)):
-        if random.random() < 0.15:
+        if random.random() < 0.25:
             words[i] = synonym_replace(words[i])
     return " ".join(words)
 
@@ -128,7 +128,7 @@ def process_chunk(chunk: str) -> str:
             best_score = score
             best = text
 
-        if score < 0.35:
+        if score < 0.25:
             break
 
     return best
