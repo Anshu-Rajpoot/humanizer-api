@@ -118,26 +118,42 @@ def ai_score_heuristic(text: str):
     return min(score, 1.0)
 
 
-def process_chunk(chunk: str):
-    best = chunk
-    best_score = 1.0
+import requests
+import os
 
-    for _ in range(3):
-        text = structural_variation(chunk)
-        text = replace_words(text)
-        text = human_tone(text)
-        text = contractions(text)
+API_KEY = os.getenv("OPENAI_API_KEY")
 
-        score = ai_score_heuristic(text)
+def rewrite_chunk(chunk: str):
+    response = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"""
+Rewrite this text to sound naturally human-written.
 
-        if score < best_score:
-            best_score = score
-            best = text
+- Keep meaning same
+- Make it less robotic
+- Vary sentence lengths
+- Add natural flow
+- Keep it concise (max 30% longer)
 
-        if score < 0.3:
-            break
+Text:
+{chunk}
+"""
+                }
+            ],
+            "temperature": 0.8
+        }
+    )
 
-    return best
+    return response.json()["choices"][0]["message"]["content"]
 
 
 # -------- API --------
