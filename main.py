@@ -4,15 +4,11 @@ import re
 import random
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
-
 from fastapi.middleware.cors import CORSMiddleware
-
-import nltk
-from nltk.corpus import wordnet
 
 app = FastAPI(title="AI Humanizer API")
 
-# ✅ CORS (required for frontend/testing)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,149 +17,116 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------- Request Schema --------
 class HumanizeRequest(BaseModel):
     text: str
 
 
-# -------- Core Functions --------
+# -------- TEXT PROCESSING --------
 
 def chunk_text(text: str, max_words: int = 150) -> List[str]:
     words = text.split()
     return [" ".join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
 
 
-# ✅ SAFE synonym replace (no crash if wordnet not available)
-def synonym_replace(word):
-    try:
-        synonyms = wordnet.synsets(word)
-        if synonyms:
-            lemmas = synonyms[0].lemma_names()
-            if lemmas:
-                return lemmas[0].replace("_", " ")
-    except:
-        return word
-    return word
+# ✅ Lightweight synonym map (FAST)
+SYN_MAP = {
+    "important": ["key", "crucial"],
+    "many": ["a lot of", "several"],
+    "help": ["assist", "support"],
+    "use": ["utilize", "apply"],
+    "shows": ["demonstrates", "reveals"],
+    "big": ["large", "major"]
+}
 
-
-def random_synonym_injection(text: str) -> str:
-    words = text.split()
-    for i in range(len(words)):
-        if random.random() < 0.25:
-            words[i] = synonym_replace(words[i])
-    return " ".join(words)
-
-
-def structural_variation(text: str) -> str:
-    sentences = re.split(r'(?<=[.!?]) +', text)
-
-    if len(sentences) > 3:
-        random.shuffle(sentences)
-
-    new_sentences = []
-    for s in sentences:
-        if len(s.split()) > 18 and random.random() > 0.5:
-            parts = s.split(",")
-            new_sentences.extend(parts)
-        else:
-            new_sentences.append(s)
-
-    return " ".join(new_sentences)
-
-
-def human_noise(text: str) -> str:
-    fillers = ["I think", "honestly", "to be fair", "in a way", "you could say"]
-    sentences = re.split(r'(?<=[.!?]) +', text)
-
-    for i in range(len(sentences)):
-        if random.random() < 0.3:
-            sentences[i] = random.choice(fillers) + ", " + sentences[i]
-
-    return " ".join(sentences)
-
-
-def inject_variability(text: str) -> str:
-    replacements = {
-        "important": ["really important", "quite important"],
-        "many": ["a lot of", "quite a few"],
-        "shows": ["kind of shows", "basically shows"],
-        "helps": ["can help", "tends to help"]
-    }
-
+def replace_words(text: str):
     words = text.split()
     for i in range(len(words)):
         w = words[i].lower()
-        if w in replacements and random.random() < 0.4:
-            words[i] = random.choice(replacements[w])
-
+        if w in SYN_MAP and random.random() < 0.3:
+            words[i] = random.choice(SYN_MAP[w])
     return " ".join(words)
 
 
-def ai_score_heuristic(text: str) -> float:
+def structural_variation(text: str):
     sentences = re.split(r'(?<=[.!?]) +', text)
-    if len(sentences) < 2:
-        return 0.5
 
-    lengths = [len(s.split()) for s in sentences]
-    avg = sum(lengths) / len(lengths)
-    variance = sum((l - avg) ** 2 for l in lengths) / len(lengths)
+    # slight shuffle (not aggressive)
+    if len(sentences) > 4 and random.random() > 0.5:
+        random.shuffle(sentences)
 
-    words = text.lower().split()
-    unique_ratio = len(set(words)) / len(words)
+    new = []
+    for s in sentences:
+        if len(s.split()) > 20 and random.random() > 0.6:
+            parts = s.split(",")
+            new.extend(parts)
+        else:
+            new.append(s)
 
-    score = 0
-    if variance < 20:
-        score += 0.4
-    if unique_ratio < 0.45:
-        score += 0.3
-    if avg > 18:
-        score += 0.3
-
-    return min(score, 1.0)
+    return " ".join(new)
 
 
-def humanize_phrases(text: str) -> str:
-    phrase_map = {
-        "In conclusion": ["To sum it up", "Overall", "At the end of the day"],
-        "Furthermore": ["Also", "On top of that", "Besides"],
-        "However": ["But", "That said", "Still"],
-        "In addition": ["Plus", "Also", "Another thing is"],
-        "It is important to note that": ["One thing to keep in mind is", "It's worth noting"],
-        "This shows that": ["This basically shows", "This kind of means"],
-        "There are many": ["There are quite a few", "You’ll find a lot of"],
-        "In today's world": ["These days", "Right now"],
+def human_tone(text: str):
+    replacements = {
+        "In conclusion": "Overall",
+        "Furthermore": "Also",
+        "However": "But",
+        "In addition": "Also",
+        "It is important to note that": "One thing to keep in mind is"
     }
 
-    for phrase, variations in phrase_map.items():
-        if phrase in text and random.random() < 0.6:
-            text = text.replace(phrase, random.choice(variations))
+    for k, v in replacements.items():
+        text = text.replace(k, v)
 
-    contractions = {
+    return text
+
+
+def contractions(text: str):
+    pairs = {
         "do not": "don't",
         "does not": "doesn't",
         "is not": "isn't",
         "are not": "aren't",
         "cannot": "can't",
-        "it is": "it's",
-        "that is": "that's"
+        "it is": "it's"
     }
 
-    for k, v in contractions.items():
-        if k in text and random.random() < 0.5:
+    for k, v in pairs.items():
+        if random.random() < 0.5:
             text = text.replace(k, v)
 
     return text
 
 
-def process_chunk(chunk: str) -> str:
+def ai_score_heuristic(text: str):
+    sentences = re.split(r'(?<=[.!?]) +', text)
+    lengths = [len(s.split()) for s in sentences if s]
+
+    if not lengths:
+        return 1.0
+
+    avg = sum(lengths) / len(lengths)
+    variance = sum((l - avg) ** 2 for l in lengths) / len(lengths)
+
+    score = 0
+    if variance < 15:
+        score += 0.4
+    if avg > 18:
+        score += 0.3
+    if len(set(text.split())) / len(text.split()) < 0.5:
+        score += 0.3
+
+    return min(score, 1.0)
+
+
+def process_chunk(chunk: str):
     best = chunk
     best_score = 1.0
 
     for _ in range(3):
         text = structural_variation(chunk)
-        text = humanize_phrases(text)
-        text = human_noise(text)
-        text = inject_variability(text)
+        text = replace_words(text)
+        text = human_tone(text)
+        text = contractions(text)
 
         score = ai_score_heuristic(text)
 
@@ -171,7 +134,7 @@ def process_chunk(chunk: str) -> str:
             best_score = score
             best = text
 
-        if score < 0.25:
+        if score < 0.3:
             break
 
     return best
@@ -188,6 +151,7 @@ def humanize(req: HumanizeRequest):
 
     final_text = " ".join(results)
 
+    # length control (STRICT)
     original_len = len(req.text.split())
     max_len = int(original_len * 1.4)
 
