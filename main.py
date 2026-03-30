@@ -7,11 +7,25 @@ from concurrent.futures import ThreadPoolExecutor
 import nltk
 from nltk.corpus import wordnet
 
+
+
 # download once
 nltk.download('wordnet')
 nltk.download('omw-1.4')
 
 app = FastAPI(title="AI Humanizer API")
+
+
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allow all (important for testing)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # -------- Request Schema --------
 class HumanizeRequest(BaseModel):
