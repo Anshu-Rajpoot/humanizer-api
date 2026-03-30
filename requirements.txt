@@ -1,6 +1,3 @@
 fastapi
 uvicorn
-transformers
-accelerate
-sentencepiece
-torch
+nltk
