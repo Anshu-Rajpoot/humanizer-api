@@ -4,28 +4,22 @@ import re
 import random
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
-import nltk
-from nltk.corpus import wordnet
-
-
-
-# download once
-nltk.download('wordnet')
-nltk.download('omw-1.4')
-
-app = FastAPI(title="AI Humanizer API")
-
 
 from fastapi.middleware.cors import CORSMiddleware
 
+import nltk
+from nltk.corpus import wordnet
+
+app = FastAPI(title="AI Humanizer API")
+
+# ✅ CORS (required for frontend/testing)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow all (important for testing)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # -------- Request Schema --------
 class HumanizeRequest(BaseModel):
@@ -39,12 +33,16 @@ def chunk_text(text: str, max_words: int = 150) -> List[str]:
     return [" ".join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
 
 
+# ✅ SAFE synonym replace (no crash if wordnet not available)
 def synonym_replace(word):
-    synonyms = wordnet.synsets(word)
-    if synonyms:
-        lemmas = synonyms[0].lemma_names()
-        if lemmas:
-            return lemmas[0].replace("_", " ")
+    try:
+        synonyms = wordnet.synsets(word)
+        if synonyms:
+            lemmas = synonyms[0].lemma_names()
+            if lemmas:
+                return lemmas[0].replace("_", " ")
+    except:
+        return word
     return word
 
 
@@ -59,11 +57,9 @@ def random_synonym_injection(text: str) -> str:
 def structural_variation(text: str) -> str:
     sentences = re.split(r'(?<=[.!?]) +', text)
 
-    # shuffle
     if len(sentences) > 3:
         random.shuffle(sentences)
 
-    # break long sentences
     new_sentences = []
     for s in sentences:
         if len(s.split()) > 18 and random.random() > 0.5:
@@ -126,6 +122,39 @@ def ai_score_heuristic(text: str) -> float:
     return min(score, 1.0)
 
 
+def humanize_phrases(text: str) -> str:
+    phrase_map = {
+        "In conclusion": ["To sum it up", "Overall", "At the end of the day"],
+        "Furthermore": ["Also", "On top of that", "Besides"],
+        "However": ["But", "That said", "Still"],
+        "In addition": ["Plus", "Also", "Another thing is"],
+        "It is important to note that": ["One thing to keep in mind is", "It's worth noting"],
+        "This shows that": ["This basically shows", "This kind of means"],
+        "There are many": ["There are quite a few", "You’ll find a lot of"],
+        "In today's world": ["These days", "Right now"],
+    }
+
+    for phrase, variations in phrase_map.items():
+        if phrase in text and random.random() < 0.6:
+            text = text.replace(phrase, random.choice(variations))
+
+    contractions = {
+        "do not": "don't",
+        "does not": "doesn't",
+        "is not": "isn't",
+        "are not": "aren't",
+        "cannot": "can't",
+        "it is": "it's",
+        "that is": "that's"
+    }
+
+    for k, v in contractions.items():
+        if k in text and random.random() < 0.5:
+            text = text.replace(k, v)
+
+    return text
+
+
 def process_chunk(chunk: str) -> str:
     best = chunk
     best_score = 1.0
@@ -148,39 +177,6 @@ def process_chunk(chunk: str) -> str:
     return best
 
 
-def humanize_phrases(text: str) -> str:
-    phrase_map = {
-        "In conclusion": ["To sum it up", "Overall", "At the end of the day"],
-        "Furthermore": ["Also", "On top of that", "Besides"],
-        "However": ["But", "That said", "Still"],
-        "In addition": ["Plus", "Also", "Another thing is"],
-        "It is important to note that": ["One thing to keep in mind is", "It's worth noting"],
-        "This shows that": ["This basically shows", "This kind of means"],
-        "There are many": ["There are quite a few", "You’ll find a lot of"],
-        "In today's world": ["These days", "Right now"],
-    }
-
-    for phrase, variations in phrase_map.items():
-        if phrase in text and random.random() < 0.6:
-            text = text.replace(phrase, random.choice(variations))
-
-    # contractions (VERY IMPORTANT for human feel)
-    contractions = {
-        "do not": "don't",
-        "does not": "doesn't",
-        "is not": "isn't",
-        "are not": "aren't",
-        "cannot": "can't",
-        "it is": "it's",
-        "that is": "that's"
-    }
-
-    for k, v in contractions.items():
-        if k in text and random.random() < 0.5:
-            text = text.replace(k, v)
-
-    return text
-
 # -------- API --------
 
 @app.post("/humanize")
@@ -192,7 +188,6 @@ def humanize(req: HumanizeRequest):
 
     final_text = " ".join(results)
 
-    # length constraint
     original_len = len(req.text.split())
     max_len = int(original_len * 1.4)
 
